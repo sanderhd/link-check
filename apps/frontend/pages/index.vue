@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref } from "vue";
 
-const API_URL = useRuntimeConfig().public.apiBase;
-
 const url = ref("");
+const turnstileToken = ref("");
+const checkForm = ref<{ resetTurnstile: () => void } | null>(null);
 const loading = ref(false);
 const result = ref<{ url: string, status: string, message: string } | null>(null);
 const error = ref("");
@@ -22,19 +22,26 @@ async function checkUrl() {
             throw new Error("Only HTTP and HTTPS URLs are supported.")
         }
 
-        const res = await fetch(`${API_URL}/api/check`, {
+        const res = await fetch("/api/check", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: url.value })
+            body: JSON.stringify({
+                url: url.value,
+                token: turnstileToken.value,
+            })
         });
 
-        if (!res.ok) throw new Error(`Server: ${res.status}`);
+        if (!res.ok) {
+            throw new Error(res.statusText || `Server: ${res.status}`);
+        }
 
         result.value = await res.json();
     } catch (e) {
         error.value = e instanceof Error ? e.message : "Something went wrong";
-    }  finally {
+    } finally {
         loading.value = false;
+        turnstileToken.value = "";
+        checkForm.value?.resetTurnstile();
     }
 }
 </script>
@@ -49,47 +56,19 @@ async function checkUrl() {
         </div>
 
         <UCard>
-            <form class="flex gap-2" @submit.prevent="checkUrl">
-                <UInput
-                    v-model="url"
-                    class="flex-1"
-                    size="xl"
-                    type="url"
-                    icon="i-lucide-link"
-                    placeholder="https://example.com/free-iphone"
-                    :disabled="loading"
-                    required
-                />
-
-                <UButton
-                    type="submit"
-                    size="xl"
-                    icon="i-lucide-search"
-                    :loading="loading"
-                >
-                    Check
-                </UButton>
-            </form>
+            <UrlCheckForm
+                ref="checkForm"
+                v-model="url"
+                v-model:token="turnstileToken"
+                :loading="loading"
+                @submit="checkUrl"
+            />
         </UCard>
 
-        <UAlert
-            v-if="result"
-            :color="result.status === 'ok' ? 'success' : 'error'"
-            variant="subtle"
-            :icon="result.status === 'ok'
-                ? 'i-lucide-shield-check'
-                : 'i-lucide-shield-alert'"
-            :title="result.status.toUpperCase()"
-            :description="result.message"
-        />
+        <CheckFeedback :result="result" :error="error" />
 
-        <UAlert
-            v-if="error"
-            color="error"
-            variant="subtle"
-            icon="i-lucide-circle-alert"
-            title="Error"
-            :description="error"
-        />
+        <div class="flex justify-end">
+            <ReportButton />
+        </div>
     </div>
 </template>
